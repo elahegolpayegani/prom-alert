@@ -1,0 +1,99 @@
+version: '3'
+
+networks:
+  grafana_default:
+    external: true
+volumes:
+  prometheus_data: {}
+  grafana_data: {}
+
+services:
+
+  alertmanager:
+    container_name: alertmanager
+    hostname: alertmanager
+    image: prom/alertmanager
+    volumes:
+      - /srv/prom-alert/alertmanager.conf:/etc/alertmanager/alertmanager.conf
+    command:
+      - '--config.file=/etc/alertmanager/alertmanager.conf'
+    ports:
+      - 9093:9093
+    restart: always
+    networks:
+      - grafana_default
+
+  prometheus:
+    container_name: prometheus
+    hostname: prometheus
+    image: prom/prometheus
+    volumes:
+      - /srv/prom-alert/prometheus.yml:/etc/prometheus/prometheus.yml
+      - /srv/prom-alert/alert_rules.yml:/etc/prometheus/alert_rules.yml
+      - prometheus_data:/prometheus
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+    links:
+      - alertmanager:alertmanager
+    restart: always
+    ports:
+      - 9090:9090
+    networks:
+      - grafana_default
+
+
+  grafana:
+    container_name: grafana
+    image: grafana/grafana:10.0.5
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=password
+      - GF_USERS_ALLOW_SIGN_UP=false
+    volumes:
+      - grafana_data:/var/lib/grafana
+      - /srv/prom-alert/grafana:/etc/grafana/provisioning
+    ports:
+      - 2028:3000
+    restart: always
+    networks:
+      - grafana_default
+
+
+  node-exporter:
+    image: prom/node-exporter:latest
+    container_name: node-exporter
+    restart: always
+    networks:
+      - grafana_default
+    #ports:  #when all this container are local, thse lines are not needed. 
+            #- 2021:2021
+
+            
+  #for monitoring container, like resources of each contaienr, cadvisor is very useful 
+  cadvisor:
+    image: gcr.io/cadvisor/cadvisor:latest
+    container_name: cadvisor
+    restart: always
+    networks:
+      - grafana_default
+    volumes:
+      - /:/rootfs:ro
+      - /var/run:/var/run:rw
+      - /sys:/sys:ro
+      - /var/lib/docker/:/var/lib/docker:ro
+    command: ["--docker_only=true"]
+        #expose:
+        #- 2025
+        #ports:
+            #- 2022:2022
+  blackbox:
+    image: prom/blackbox-exporter:latest
+    container_name: blackbox
+    restart: always
+    networks:
+      - grafana_default
+    privileged: true
+    volumes:
+      - /srv/prom-alert/blackbox.yml:/etc/blackbox_exporter/config.yml
+    ports:
+      - '9115:9115'
